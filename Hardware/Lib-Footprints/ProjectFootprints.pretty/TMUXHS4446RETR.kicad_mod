@@ -444,7 +444,7 @@
 		(layers "F.Cu" "F.Paste" "F.Mask")
 		(uuid "d110b9fa-7cc7-473b-b0c6-63f1907b828f")
 	)
-	(model "C:\\Users\\tgent\\workspaces\\libraryloader\\SamacSys_Parts.3dshapes\\TMUXHS4446RETR.stp"
+	(model "${KIPRJMOD}/Lib-3D-Files/TMUXHS4446RETR.stp"
 		(offset
 			(xyz 0 0 0)
 		)
