@@ -1,4 +1,4 @@
-# library_manager.py
+# library_manager.py - Emojis Removed
 
 import os
 import shutil
@@ -16,8 +16,8 @@ load_dotenv()
 
 # Attempt to get environment variables. These must be defined in the calling environment or .env.
 try:
-    GLOBAL_SYMBOL_LIB = Path(os.getenv("GLOBAL_SYMBOL_LIB"))
-    GLOBAL_FOOTPRINT_LIB = Path(os.getenv("GLOBAL_FOOTPRINT_LIB"))
+    # GLOBAL_SYMBOL_LIB = Path(os.getenv("GLOBAL_SYMBOL_LIB"))
+    # GLOBAL_FOOTPRINT_LIB = Path(os.getenv("GLOBAL_FOOTPRINT_LIB"))
     INPUT_ZIP_FOLDER = Path(os.getenv("INPUT_ZIP_FOLDER"))
 except TypeError:
     # Handle case where .env is missing or variables aren't set
@@ -50,8 +50,14 @@ os.makedirs(PROJECT_3D_DIR, exist_ok=True)
 os.makedirs(INPUT_ZIP_FOLDER, exist_ok=True)
 
 # --------------------------------------------------------------------------------------------------
-#                                 CORE FUNCTION LOGIC
+#                                 CORE FUNCTION LOGIC
 # --------------------------------------------------------------------------------------------------
+def get_existing_main_symbols():
+    """
+    Wrapper to get the set of main symbols currently in the project library.
+    """
+    return set(list_symbols_simple(PROJECT_SYMBOL_LIB, print_list=False))
+
 
 def localize_footprint_path(symbol_block_text: str, project_lib_name: str) -> str:
     """
@@ -171,7 +177,7 @@ def append_symbols_from_file(src_sym_file: Path):
     """
     PROJECT_FOOTPRINT_LIB_NAME = PROJECT_FOOTPRINT_LIB.stem 
 
-    existing_main_symbols = set(list_symbols_simple(PROJECT_SYMBOL_LIB, print_list=True))
+    existing_main_symbols = set(list_symbols_simple(PROJECT_SYMBOL_LIB, print_list=False))
     
     # Load existing map or start fresh
     footprint_map = {}
@@ -183,7 +189,7 @@ def append_symbols_from_file(src_sym_file: Path):
         with open(src_sym_file, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
-        print(f"Source file not found: {src_sym_file.name}")
+        print(f"ERROR: Source file not found: {src_sym_file.name}")
         return False
         
     symbols_to_append_text = []
@@ -251,7 +257,7 @@ def append_symbols_from_file(src_sym_file: Path):
         with open(project_sym_path, "w", encoding="utf-8") as f:
             f.write(new_file_content)
         
-        print(f"Appended {len(symbols_to_append_text)} symbols to {project_sym_path.name}")
+        # print(f"Appended {len(symbols_to_append_text)} symbols to {project_sym_path.name}")
 
     if not appended_any:
         print(f"No new symbols to append from {src_sym_file.name}")
@@ -270,7 +276,7 @@ def process_zip(zip_path : Path):
     if TEMP_MAP_FILE.exists():
         TEMP_MAP_FILE.unlink()
     
-    print(f"Extracting to: {tempdir}")
+    # print(f"Extracting to: {tempdir}")
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(tempdir)
         
@@ -282,7 +288,7 @@ def process_zip(zip_path : Path):
             symbols_added = True
         
     if not symbols_added:
-        print("\nSkipping footprint and 3D model copy because no new symbols were added.")
+        print("\nWarning: Skipping footprint and 3D model copy because no new symbols were added.")
         shutil.rmtree(tempdir)
         if TEMP_MAP_FILE.exists():
             TEMP_MAP_FILE.unlink()
@@ -293,7 +299,7 @@ def process_zip(zip_path : Path):
         dest = PROJECT_FOOTPRINT_LIB / mod_file.name
         
         if dest.exists():
-            print(f"Skipped footprint \"{mod_file.name}\": Already exists in \"{PROJECT_FOOTPRINT_LIB.name}\"")
+            print(f"Warning: Skipped footprint \"{mod_file.name}\": Already exists in \"{PROJECT_FOOTPRINT_LIB.name}\"")
         else:
             modified_content = localize_3d_model_path(mod_file)
             
@@ -303,14 +309,14 @@ def process_zip(zip_path : Path):
                 print(f"Added footprint \"{mod_file.name}\" to \"{PROJECT_FOOTPRINT_LIB.name}\" (3D path localized)")
             else:
                 shutil.copy(mod_file, dest)
-                print(f"Added footprint \"{mod_file.name}\" to \"{PROJECT_FOOTPRINT_LIB.name}\" (3D path NO localization)")
+                print(f"Warning: Added footprint \"{mod_file.name}\" to \"{PROJECT_FOOTPRINT_LIB.name}\" (3D path NO localization)")
         
     # --- 3. Process 3D Models (Copy the Symbol-Named STP files) ---
     for step_file in tempdir.rglob("*stp"):
         dest = PROJECT_3D_DIR / step_file.name
         
         if dest.exists():
-            print(f"Skipped 3D model \"{step_file.name}\": Already exists in \".\\{PROJECT_3D_DIR.name}\"")
+            print(f"Warning: Skipped 3D model \"{step_file.name}\": Already exists in \".\\{PROJECT_3D_DIR.name}\"")
         else:
             shutil.copy(step_file, dest)
             print(f"Added 3D model \"{step_file.name}\" to \".\\{PROJECT_3D_DIR.name}\"")
@@ -387,7 +393,7 @@ def purge_zip_contents(zip_path: Path):
             # Write the modified content back to the symbol library
             with open(PROJECT_SYMBOL_LIB, "w", encoding="utf-8") as f:
                 f.write(project_content)
-            print(f"✅ Deleted {deleted_count} symbol block(s) corresponding to {len(symbols_to_delete)} main symbols.")
+            print(f"Deleted {deleted_count} symbol block(s) corresponding to {len(symbols_to_delete)} main symbols.")
         else:
             print("No matching symbols found for deletion.")
 
@@ -401,7 +407,7 @@ def purge_zip_contents(zip_path: Path):
             fp_path.unlink()
             deleted_fp_count += 1
             
-    print(f"✅ Deleted {deleted_fp_count} footprints from {PROJECT_FOOTPRINT_LIB.name}.")
+    print(f"Deleted {deleted_fp_count} footprints from {PROJECT_FOOTPRINT_LIB.name}.")
 
 
     # --- 3. Identify and Delete 3D Models (.stp) ---
@@ -414,7 +420,7 @@ def purge_zip_contents(zip_path: Path):
             stp_path.unlink()
             deleted_3d_count += 1
 
-    print(f"✅ Deleted {deleted_3d_count} 3D model files from {PROJECT_3D_DIR.name}.")
+    print(f"Deleted {deleted_3d_count} 3D model files from {PROJECT_3D_DIR.name}.")
 
     # Cleanup temp directory
     shutil.rmtree(tempdir)
