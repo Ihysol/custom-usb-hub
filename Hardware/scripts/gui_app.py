@@ -81,49 +81,61 @@ SCROLL_FLAG_TAG = "scroll_flag_int"
 ACTION_SECTION_TAG = "action_section_group"
 LOG_TEXT_TAG = "log_text_container" 
 LOG_WINDOW_CHILD_TAG = "log_window_child" 
+FULL_LOG_POPUP_TAG = "full_log_popup"
+FULL_LOG_TEXT_TAG = "full_log_text_area"
 
 # --- State Management ---
 all_selected_paths = [] 
+full_log_history = [] # NEW: Stores raw log strings for multi-line copying
 
 # ===================================================
-# --- DPG UTILITIES ---
+# --- DPG UTILITIES (UPDATED FOR LOG HISTORY) ---
 # ===================================================
 
 def log_message(sender, app_data, user_data: str, add_timestamp: bool = True, is_cli_output: bool = False):
     """
-    Dynamically adds a text widget to the log container, optionally with a timestamp and color.
-    
-    Args:
-        user_data (str): The message content.
-        add_timestamp (bool): If True, prepends a timestamp. Defaults to True.
-        is_cli_output (bool): If True, uses the darker CLI output theme. Defaults to False.
+    Dynamically adds a selectable and copyable input text widget to the log container,
+    and also updates the raw log history.
     """
+    global full_log_history
     
     # 1. Format the log entry
     if not user_data:
-        # If user_data is empty, treat it as a newline and stop (to avoid empty text widgets)
+        # Handle newline/spacer for DPG UI
         dpg.add_text(" ", parent=LOG_TEXT_TAG, tag=dpg.generate_uuid())
+        # Add a newline to the history
+        full_log_history.append("")
         return
 
     log_entry = user_data
     if add_timestamp:
         timestamp = datetime.now().strftime("[%H:%M:%S]")
-        log_entry = f"{timestamp} {user_data}"
+        log_entry_full = f"{timestamp} {user_data}"
+    else:
+        log_entry_full = user_data
+    
+    # Update the raw log history list for "Copy All" functionality
+    full_log_history.append(log_entry_full)
     
     # 2. Determine theme based on content
     theme_tag = "default_log_theme"
-    user_data_upper = log_entry.upper()
+    user_data_upper = log_entry_full.upper()
     
     if is_cli_output:
-        # Apply the dedicated theme for raw CLI output
         theme_tag = "cli_output_theme"
     elif "[FAIL]" in user_data_upper or "[ERROR]" in user_data_upper or "CRITICAL ERROR" in user_data_upper:
         theme_tag = "error_log_theme"
     elif "[OK]" in user_data_upper or "[SUCCESS]" in user_data_upper:
         theme_tag = "success_log_theme"
     
-    # 3. Add the new message as a separate text item to the container
-    new_text_item = dpg.add_text(log_entry, parent=LOG_TEXT_TAG, wrap=0, tag=dpg.generate_uuid())
+    # 3. Add the new message as a separate INPUT TEXT item
+    new_text_item = dpg.add_input_text(
+        default_value=log_entry_full,
+        parent=LOG_TEXT_TAG,
+        readonly=True,
+        width=-1, # Ensure it stretches horizontally
+        tag=dpg.generate_uuid()
+    )
     dpg.bind_item_theme(new_text_item, theme_tag)
 
     # 4. Trigger and apply scroll to bottom
@@ -136,13 +148,54 @@ def log_message(sender, app_data, user_data: str, add_timestamp: bool = True, is
 
 def clear_log(sender, app_data):
     """Clears the log text area by deleting all child items in the container."""
-    # Delete all items inside the LOG_TEXT_TAG group
+    global full_log_history
+    
+    # Clear DPG UI items
     dpg.delete_item(LOG_TEXT_TAG, children_only=True) 
+    
+    # Clear log history
+    full_log_history.clear()
     
     log_message(None, None, "Log cleared.", add_timestamp=True)
     log_message(None, None, "Ready.", add_timestamp=True)
 
 
+def show_full_log_popup(sender, app_data):
+    """
+    Creates and shows a popup window with the entire log history as a single,
+    fully selectable, multiline text block.
+    """
+    global full_log_history
+    
+    # Check if the popup already exists (e.g., if it was hidden, not closed)
+    if dpg.does_item_exist(FULL_LOG_POPUP_TAG):
+        dpg.set_value(FULL_LOG_TEXT_TAG, "\n".join(full_log_history))
+        dpg.show_item(FULL_LOG_POPUP_TAG)
+        return
+        
+    # Create the popup window
+    with dpg.window(
+        label="Full Log for Copying (No Colors)", 
+        modal=True, 
+        show=True, 
+        tag=FULL_LOG_POPUP_TAG, 
+        width=800, 
+        height=400
+    ):
+        dpg.add_text("This is the full, raw log. Use CTRL+A to select all and CTRL+C to copy.")
+        dpg.add_separator()
+
+        # Single multiline input text for full selection/copying
+        dpg.add_input_text(
+            default_value="\n".join(full_log_history),
+            multiline=True,
+            readonly=True,
+            width=-1,
+            height=-1,
+            tag=FULL_LOG_TEXT_TAG
+        )
+
+# ... (rest of DPG utilities: build_file_list_ui, toggle_all_checkboxes, etc. remain unchanged)
 def build_file_list_ui(zip_paths):
     """Dynamically creates a list of checkboxes for the selected files."""
     global all_selected_paths
@@ -279,7 +332,7 @@ def show_native_folder_dialog(sender, app_data):
 
 
 # ===================================================
-# --- GUI Layout and Initialization ---
+# --- GUI Layout and Initialization (Themes updated) ---
 # ===================================================
 
 def reload_folder_from_path(folder_path_str):
@@ -350,28 +403,20 @@ def create_gui():
             dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (25, 25, 25))
     dpg.bind_theme(global_theme)
     
-    # --- Log Color Themes ---
+    # --- Log Color Themes (Targets dpg.mvInputText) ---
+    # These themes are applied to the single-line inputs to make them look like colored text
     
-    # 1. Default (Timestamped messages) - Bright/Normal Grey
-    with dpg.theme(tag="default_log_theme"):
-        with dpg.theme_component(dpg.mvAll):
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (200, 200, 200)) 
-            
-    # 2. CLI Output (Non-timestamped messages) - Darker Grey
-    with dpg.theme(tag="cli_output_theme"):
-        with dpg.theme_component(dpg.mvAll):
-            # A darker grey to distinguish it from the standard log
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (140, 140, 140)) 
-            
-    # 3. Error/Fail
-    with dpg.theme(tag="error_log_theme"):
-        with dpg.theme_component(dpg.mvAll):
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 50, 50)) 
-            
-    # 4. Success
-    with dpg.theme(tag="success_log_theme"):
-        with dpg.theme_component(dpg.mvAll):
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (0, 255, 0)) 
+    def setup_log_theme(tag, color):
+        with dpg.theme(tag=tag):
+            with dpg.theme_component(dpg.mvInputText):
+                dpg.add_theme_color(dpg.mvThemeCol_Text, color) 
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0)
+                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (0, 0, 0, 0)) # Transparent background
+
+    setup_log_theme("default_log_theme", (200, 200, 200)) # Default
+    setup_log_theme("cli_output_theme", (140, 140, 140)) # CLI Output
+    setup_log_theme("error_log_theme", (255, 50, 50))    # Error/Fail
+    setup_log_theme("success_log_theme", (0, 255, 0))    # Success
     
     # --- Main Window ---
     with dpg.window(tag="main_window", label="KiCad Library Manager"):
@@ -408,13 +453,13 @@ def create_gui():
             # Action Buttons Section
             with dpg.group(horizontal=True, horizontal_spacing=20):
                 dpg.add_button(
-                    label="🚀 PROCESS / IMPORT", 
+                    label="PROCESS / IMPORT", 
                     tag="process_btn", 
                     callback=lambda s, a: process_action(s, a, False),
                     width=200
                 )
                 dpg.add_button(
-                    label="🗑️ PURGE / DELETE", 
+                    label="PURGE / DELETE", 
                     tag="purge_btn", 
                     callback=lambda s, a: process_action(s, a, True),
                     width=200
@@ -426,12 +471,14 @@ def create_gui():
         # Log Output Section (Always visible)
         with dpg.group(horizontal=True):
             dpg.add_text("CLI Output Log:")
-            dpg.add_button(label="🧹 Clear Log", callback=clear_log, small=True) 
+            dpg.add_button(label="Clear Log", callback=clear_log, small=True) 
+            # NEW: Button to open the multi-line copyable log
+            dpg.add_button(label="Copy Full Log", callback=show_full_log_popup, small=True)
             
         # Log Text Area (Wrapped in child window for scrolling)
         with dpg.child_window(tag=LOG_WINDOW_CHILD_TAG, width=-1, height=-1, border=True):
-            # This group holds the dynamically added dpg.add_text items
-            dpg.add_group(tag=LOG_TEXT_TAG, width=-1)
+            # This group holds the dynamically added dpg.add_input_text items (one per line)
+            dpg.add_group(tag=LOG_TEXT_TAG, width=-1) 
         
         # Scroll Flag Item (Hidden)
         dpg.add_input_int(tag=SCROLL_FLAG_TAG, default_value=0, show=False)
